@@ -1,0 +1,10 @@
+{
+  "name": "device",
+  "permissions": {
+    "android": [],
+    "ios": {}
+  },
+  "methods": ["getInfo", "getId", "getBatteryInfo", "getLanguageCode"],
+  "hooks": [],
+  "events": ["device:chargingChanged"]
+}

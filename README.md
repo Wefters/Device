@@ -1,94 +1,132 @@
 # @wefterjs/device
 
-Official Wefter plugin for querying device metadata, unique ID, battery state, and system locale on Android and iOS.
-
----
+Official Wefter plugin for querying device metadata, hardware identifiers, battery status, charging updates, and system language locale on Android and iOS.
 
 ## Features
 
-- 📱 **Device Metadata**: Fetch model, OS version, manufacturer, and emulator detection with `getInfo()`.
-- 🔑 **Device Identifier**: Retrieve unique device vendor/hardware UUID with `getId()`.
-- 🔋 **Battery Info**: Access battery level (0.0 to 1.0) and charging status with `getBatteryInfo()`.
-- 🌐 **Locale & Language**: Read active system language code with `getLanguageCode()`.
+- Query device model, manufacturer, operating system version, and virtual emulator status.
+- Retrieve a persistent unique vendor UUID.
+- Inspect battery charge levels and charging states.
+- Subscribe to real-time charging status change events.
+- Retrieve active system language codes.
+- No runtime permissions required.
 
----
+## Installation and setup
 
-## Installation & Setup
-
-1. Add the plugin to your Wefter project:
+Install the plugin package in your Wefter application:
 
 ```bash
 wefter add @wefterjs/device
-```
-
-2. Synchronize native projects:
-
-```bash
 wefter sync
 ```
 
----
+## JavaScript API reference
 
-## JavaScript / TypeScript API Reference
+Import `Device` from `@wefterjs/device`:
 
 ```ts
 import { Device } from "@wefterjs/device";
 ```
 
-### 1. `getInfo()`
+### Device metadata
 
-Returns general device hardware and operating system metadata.
+Retrieve hardware and operating system details:
 
 ```ts
 const info = await Device.getInfo();
-console.log(info.model, info.osVersion, info.isVirtual);
+
+console.log("Model:", info.model);                   // e.g. "Pixel 8" or "iPhone 15,2"
+console.log("Platform:", info.platform);             // "android", "ios", or "web"
+console.log("Operating system:", info.operatingSystem); // "android" or "ios"
+console.log("OS version:", info.osVersion);         // e.g. "14" or "17.4"
+console.log("Manufacturer:", info.manufacturer);     // e.g. "Google" or "Apple"
+console.log("Is virtual/emulator:", info.isVirtual); // true when running in emulator or simulator
+if (info.webViewVersion) {
+  console.log("WebView version:", info.webViewVersion);
+}
 ```
 
-### 2. `getId()`
+### Unique device identifier
 
-Returns the unique device identifier UUID.
+Retrieve the unique vendor hardware identifier:
 
 ```ts
 const { uuid } = await Device.getId();
 console.log("Device UUID:", uuid);
 ```
 
-### 3. `getBatteryInfo()`
+On Android, this maps to `Settings.Secure.ANDROID_ID`. On iOS, this maps to `UIDevice.current.identifierForVendor`.
 
-Returns battery level percentage and charging status.
+### Battery information and charging events
+
+Inspect current battery status and monitor charging transitions:
 
 ```ts
+// Check battery level and charging state
 const battery = await Device.getBatteryInfo();
-console.log(`Battery: ${battery.batteryLevel * 100}%, Charging: ${battery.isCharging}`);
+console.log("Battery level:", Math.round(battery.batteryLevel * 100) + "%");
+console.log("Is charging:", battery.isCharging);
+
+// Subscribe to charging transitions
+const sub = Device.onChargingChange((status) => {
+  console.log("Charging state updated:", status.isCharging);
+  console.log("Current level:", status.batteryLevel);
+});
+
+// Remove listener when done
+sub.remove();
 ```
 
-### 4. `getLanguageCode()`
+### System language
 
-Returns the primary language code tag (e.g. `en-US`).
+Retrieve the user's preferred system language locale:
 
 ```ts
 const lang = await Device.getLanguageCode();
-console.log("System language:", lang.value);
+console.log("Language code:", lang.value); // e.g. "en-US"
 ```
 
----
-
-## Complete Usage Example
+## Complete usage example
 
 ```ts
 import { Device } from "@wefterjs/device";
 
-export async function logDiagnostics() {
-  const info = await Device.getInfo();
-  const { uuid } = await Device.getId();
-  const battery = await Device.getBatteryInfo();
-  const lang = await Device.getLanguageCode();
+export async function collectDeviceDiagnostics() {
+  const [info, id, battery, lang] = await Promise.all([
+    Device.getInfo(),
+    Device.getId(),
+    Device.getBatteryInfo(),
+    Device.getLanguageCode(),
+  ]);
 
-  console.log("Diagnostics:", {
-    device: `${info.manufacturer} ${info.model} (OS ${info.osVersion})`,
-    uuid,
-    battery: `${(battery.batteryLevel * 100).toFixed(0)}% (${battery.isCharging ? "Charging" : "Discharging"})`,
-    language: lang.value,
-  });
+  return {
+    device: `${info.manufacturer} ${info.model}`,
+    os: `${info.operatingSystem} ${info.osVersion}`,
+    isSimulator: info.isVirtual,
+    deviceId: id.uuid,
+    batteryPercentage: Math.round(battery.batteryLevel * 100),
+    isCharging: battery.isCharging,
+    locale: lang.value,
+  };
 }
 ```
+
+## Platform implementation notes
+
+### Android
+
+- **Metadata**: Uses `android.os.Build` properties.
+- **Battery**: Queries `BatteryManager` and registers a `BroadcastReceiver` for `ACTION_BATTERY_CHANGED`.
+- **Identifier**: Uses `Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)`.
+- **Locale**: Reads `Locale.getDefault().toLanguageTag()`.
+
+### iOS
+
+- **Metadata**: Queries `UIDevice.current` and `sysctlbyname` for model machine codes.
+- **Battery**: Enables `isBatteryMonitoringEnabled` on `UIDevice.current` and listens to `batteryStateDidChangeNotification`.
+- **Identifier**: Uses `UIDevice.current.identifierForVendor?.uuidString`.
+- **Locale**: Reads `Locale.preferredLanguages.first`.
+
+## License
+
+[MIT](LICENSE) © 2026 Sandip Ghimire

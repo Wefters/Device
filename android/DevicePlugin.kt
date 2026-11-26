@@ -11,19 +11,10 @@ import java.util.Locale
 import java.util.UUID
 import org.json.JSONObject
 
+/** Device, OS and battery information. Listens for power connection changes to report charging. */
 class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
         WefterPlugin(context, dispatcher) {
 
-    // ---------------------------------------------------------------------------
-    // Battery charging event
-    // ---------------------------------------------------------------------------
-
-    /**
-     * Receives ACTION_POWER_CONNECTED and ACTION_POWER_DISCONNECTED to emit
-     * a "device:chargingChanged" hook whenever the charger is plugged or unplugged.
-     * ACTION_BATTERY_CHANGED is also included so level updates on charging state
-     * transitions are captured in a single snapshot.
-     */
     private val chargingReceiver =
             object : BroadcastReceiver() {
                 override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -31,11 +22,11 @@ class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
                         val batteryJson = readBatteryJson(ctx ?: context)
                         emit("device:chargingChanged", batteryJson)
                     } catch (e: Exception) {
-                        // Silently ignore — JS listeners should not crash the app
                     }
                 }
             }
 
+    /** Starts listening for the charger being connected or disconnected. */
     init {
         try {
             val filter =
@@ -45,14 +36,16 @@ class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
                     }
             context.registerReceiver(chargingReceiver, filter)
         } catch (e: Exception) {
-            // Registration may fail in restricted contexts; non-fatal
         }
     }
 
-    // ---------------------------------------------------------------------------
     // @WefterMethod implementations
-    // ---------------------------------------------------------------------------
 
+    /**
+     * Model, manufacturer, OS version, the system HTTP user agent (as `webViewVersion`), and whether this is
+     * an
+     * emulator.
+     */
     @WefterMethod
     fun getInfo(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         try {
@@ -81,6 +74,7 @@ class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
         }
     }
 
+    /** The Android ID, or a random UUID when it is unavailable. */
     @WefterMethod
     fun getId(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         try {
@@ -96,6 +90,7 @@ class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
         }
     }
 
+    /** Battery level from 0 to 1 and charging state. */
     @WefterMethod
     fun getBatteryInfo(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         try {
@@ -105,6 +100,7 @@ class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
         }
     }
 
+    /** The device language, such as `en`. */
     @WefterMethod
     fun getLanguageCode(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         try {
@@ -116,11 +112,7 @@ class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------
-
-    /** Reads a battery snapshot from a sticky ACTION_BATTERY_CHANGED broadcast. */
+    /** Battery level and charging state from the sticky battery broadcast. */
     private fun readBatteryJson(ctx: Context): JSONObject {
         val intentFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val batteryStatus: Intent? = ctx.registerReceiver(null, intentFilter)

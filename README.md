@@ -35,11 +35,11 @@ Retrieve hardware and operating system details:
 ```ts
 const info = await Device.getInfo();
 
-console.log("Model:", info.model);                   // e.g. "Pixel 8" or "iPhone 15,2"
-console.log("Platform:", info.platform);             // "android", "ios", or "web"
+console.log("Model:", info.model); // e.g. "Pixel 8" or "iPhone 15,2"
+console.log("Platform:", info.platform); // "android", "ios", or "web"
 console.log("Operating system:", info.operatingSystem); // "android" or "ios"
-console.log("OS version:", info.osVersion);         // e.g. "14" or "17.4"
-console.log("Manufacturer:", info.manufacturer);     // e.g. "Google" or "Apple"
+console.log("OS version:", info.osVersion); // e.g. "14" or "17.4"
+console.log("Manufacturer:", info.manufacturer); // e.g. "Google" or "Apple"
 console.log("Is virtual/emulator:", info.isVirtual); // true when running in emulator or simulator
 if (info.webViewVersion) {
   console.log("WebView version:", info.webViewVersion);

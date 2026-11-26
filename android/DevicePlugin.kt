@@ -7,34 +7,55 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import java.util.Locale
 import java.util.UUID
 import org.json.JSONObject
 
-/** Device, OS and battery information. Listens for power connection changes to report charging. */
+/**
+ * Device, OS and battery information. Listens to the battery broadcast to report when the device starts or
+ * stops charging.
+ */
 class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
         WefterPlugin(context, dispatcher) {
 
+    /** The charging state last reported to JavaScript, so only real changes are emitted. */
+    private var lastCharging: Boolean? = null
+
+    /**
+     * Emits `device:chargingChanged` when the charging state in a battery broadcast differs from the last
+     * one. The state is read from the broadcast itself: reading the sticky battery intent when the charger
+     * connects can return the state from before the change.
+     */
     private val chargingReceiver =
             object : BroadcastReceiver() {
                 override fun onReceive(ctx: Context?, intent: Intent?) {
+                    if (intent == null || isInitialStickyBroadcast) return
                     try {
-                        val batteryJson = readBatteryJson(ctx ?: context)
+                        val batteryJson = batteryJsonFrom(intent)
+                        val charging = batteryJson.getBoolean("isCharging")
+                        if (charging == lastCharging) return
+                        lastCharging = charging
                         emit("device:chargingChanged", batteryJson)
                     } catch (e: Exception) {
                     }
                 }
             }
 
-    /** Starts listening for the charger being connected or disconnected. */
+    /**
+     * Starts listening for battery changes, which Android sends when the charger is connected or
+     * disconnected (and when the level changes). The current state becomes the baseline.
+     */
     init {
         try {
-            val filter =
-                    IntentFilter().apply {
-                        addAction(Intent.ACTION_POWER_CONNECTED)
-                        addAction(Intent.ACTION_POWER_DISCONNECTED)
-                    }
-            context.registerReceiver(chargingReceiver, filter)
+            val current =
+                    ContextCompat.registerReceiver(
+                            context,
+                            chargingReceiver,
+                            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                            ContextCompat.RECEIVER_NOT_EXPORTED
+                    )
+            lastCharging = current?.let { batteryJsonFrom(it).getBoolean("isCharging") }
         } catch (e: Exception) {
         }
     }
@@ -114,26 +135,34 @@ class DevicePlugin(context: Context, dispatcher: BridgeDispatcher) :
 
     /** Battery level and charging state from the sticky battery broadcast. */
     private fun readBatteryJson(ctx: Context): JSONObject {
-        val intentFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val batteryStatus: Intent? = ctx.registerReceiver(null, intentFilter)
+        val batteryStatus: Intent? = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        return batteryJsonFrom(batteryStatus)
+    }
 
+    /**
+     * Battery level from 0 to 1 (`-1` when unknown) and whether the device is charging, from a battery
+     * broadcast. Charging means connected to power, as on iOS: the plug state changes with the charger,
+     * while the status can lag behind it or read "not charging" when the phone holds the charge (battery
+     * protection, or full).
+     */
+    private fun batteryJsonFrom(batteryStatus: Intent?): JSONObject {
         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val plugged = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
         val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
 
-        val batteryLevel =
-                if (level >= 0 && scale > 0) {
-                    (level.toFloat() / scale.toFloat())
-                } else {
-                    -1.0f
-                }
+        val batteryLevel = if (level >= 0 && scale > 0) level.toDouble() / scale else -1.0
 
         val isCharging =
-                status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                        status == BatteryManager.BATTERY_STATUS_FULL
+                if (plugged >= 0) {
+                    plugged != 0
+                } else {
+                    status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == BatteryManager.BATTERY_STATUS_FULL
+                }
 
         return JSONObject()
-                .put("batteryLevel", batteryLevel.toDouble())
+                .put("batteryLevel", batteryLevel)
                 .put("isCharging", isCharging)
     }
 }
